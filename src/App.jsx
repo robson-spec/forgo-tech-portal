@@ -29,6 +29,19 @@ const LOCATIONS = [
   { id: "jaguariuna", name: "Jaguariúna", subtitle: "Operação Jaguariúna" },
 ];
 
+const SYSTEM_USERS = [
+  "Robson",
+  "Alexandre",
+  "Pana",
+  "Caio",
+  "Júlio",
+  "Carlos",
+  "Achiles",
+  "Cândido",
+  "Joel",
+  "Victoria",
+];
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [loadingSession, setLoadingSession] = useState(true);
@@ -39,6 +52,7 @@ export default function App() {
   const [msg, setMsg] = useState("");
 
   const [page, setPage] = useState("dashboard");
+  const [pageHistory, setPageHistory] = useState([]);
   const [selectedLocation, setSelectedLocation] = useState("");
 
   const [ganttItems, setGanttItems] = useState([]);
@@ -58,6 +72,9 @@ export default function App() {
   const [selectedTicketIds, setSelectedTicketIds] = useState([]);
   const [selectedActivityIds, setSelectedActivityIds] = useState([]);
   const [selectedTrashIds, setSelectedTrashIds] = useState([]);
+
+  const [systemUsers, setSystemUsers] = useState(SYSTEM_USERS);
+  const [newSystemUser, setNewSystemUser] = useState("");
 
   const [ticketSearch, setTicketSearch] = useState("");
   const [ticketStatusFilter, setTicketStatusFilter] = useState("Todos");
@@ -92,6 +109,8 @@ export default function App() {
     description: "",
     color: "#2563eb",
     fileName: "",
+    filePath: "",
+    fileUrl: "",
     createdAt: "",
   });
 
@@ -102,6 +121,8 @@ export default function App() {
     status: "Ativo",
     color: "#16a34a",
     fileName: "",
+    filePath: "",
+    fileUrl: "",
     createdAt: "",
   });
 
@@ -117,6 +138,11 @@ export default function App() {
 
   const [apiUploadFile, setApiUploadFile] = useState(null);
   const [apiUploading, setApiUploading] = useState(false);
+  const [documentUploadFile, setDocumentUploadFile] = useState(null);
+  const [contractUploadFile, setContractUploadFile] = useState(null);
+  const [ticketUploadFile, setTicketUploadFile] = useState(null);
+  const [activityUploadFile, setActivityUploadFile] = useState(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState("");
 
   const [ticketForm, setTicketForm] = useState({
     title: "",
@@ -125,10 +151,13 @@ export default function App() {
     category: "",
     priority: "Média",
     responsible: "",
+    assignedTo: "",
     dueDate: "",
     description: "",
     status: "Aberto",
     fileName: "",
+    filePath: "",
+    fileUrl: "",
   });
 
   const [activityForm, setActivityForm] = useState({
@@ -143,6 +172,9 @@ export default function App() {
     startDate: "",
     expectedDate: "",
     conclusionDate: "",
+    fileName: "",
+    filePath: "",
+    fileUrl: "",
   });
 
   const [showActivityModal, setShowActivityModal] = useState(false);
@@ -156,6 +188,43 @@ export default function App() {
   const locationStorageKey = session?.user?.email
     ? `forgo_location_${session.user.email}`
     : null;
+
+  const pageLabels = {
+    dashboard: "Dashboard",
+    gantt: "Gantt",
+    postit: "Post-it",
+    repositorio: "Repositório",
+    contratos: "Contratos",
+    apis: "APIs",
+    chamados: "Chamados",
+    atividades: "Gestão de Atividades",
+    lixeira: "Lixeira",
+  };
+
+  function navigateTo(nextPage) {
+    if (nextPage === page) return;
+
+    setPageHistory((prev) => [...prev, page]);
+    setPage(nextPage);
+  }
+
+  function goBack() {
+    setPageHistory((prev) => {
+      if (prev.length === 0) {
+        setPage("dashboard");
+        return [];
+      }
+
+      const previousPage = prev[prev.length - 1];
+      setPage(previousPage);
+      return prev.slice(0, -1);
+    });
+  }
+
+  function goDashboard() {
+    setPageHistory([]);
+    setPage("dashboard");
+  }
 
   const storageKey =
     session?.user?.email && selectedLocation
@@ -178,6 +247,24 @@ export default function App() {
     document.body.style.fontFamily = "'Inter', Arial, sans-serif";
     document.body.style.WebkitFontSmoothing = "antialiased";
     document.body.style.MozOsxFontSmoothing = "grayscale";
+
+    const styleId = "forgo-dashboard-ticker-style";
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.innerHTML = `
+        @keyframes forgoTicker {
+          0% { transform: translateX(100%); }
+          100% { transform: translateX(-100%); }
+        }
+
+        @keyframes forgoPageIn {
+          0% { opacity: 0; transform: translateY(10px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
   }, []);
 
   useEffect(() => {
@@ -233,6 +320,7 @@ export default function App() {
       setApis(parsed.apis || []);
       setTickets(parsed.tickets || []);
       setActivities(parsed.activities || []);
+      setSystemUsers(parsed.systemUsers || SYSTEM_USERS);
       setTrash(parsed.trash || []);
     } else {
       setGanttItems([]);
@@ -242,6 +330,7 @@ export default function App() {
       setApis([]);
       setTickets([]);
       setActivities([]);
+      setSystemUsers(SYSTEM_USERS);
       setTrash([]);
     }
   }, [storageKey]);
@@ -259,10 +348,11 @@ export default function App() {
         apis,
         tickets,
         activities,
+        systemUsers,
         trash,
       })
     );
-  }, [ganttItems, postIts, documents, contracts, apis, tickets, activities, trash, storageKey]);
+  }, [ganttItems, postIts, documents, contracts, apis, tickets, activities, systemUsers, trash, storageKey]);
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -286,11 +376,13 @@ export default function App() {
   async function handleLogout() {
     await supabase.auth.signOut();
     setPage("dashboard");
+    setPageHistory([]);
     setSelectedLocation("");
   }
 
   function handleChooseLocation(locationId) {
     setSelectedLocation(locationId);
+    setPageHistory([]);
     setPage("dashboard");
 
     if (locationStorageKey) {
@@ -321,6 +413,7 @@ export default function App() {
       setApis(parsed.apis || []);
       setTickets(parsed.tickets || []);
       setActivities(parsed.activities || []);
+      setSystemUsers(parsed.systemUsers || SYSTEM_USERS);
       setTrash(parsed.trash || []);
     } else {
       setGanttItems([]);
@@ -330,6 +423,7 @@ export default function App() {
       setApis([]);
       setTickets([]);
       setActivities([]);
+      setSystemUsers(SYSTEM_USERS);
       setTrash([]);
     }
   }
@@ -342,6 +436,7 @@ export default function App() {
     if (!confirmed) return;
 
     setSelectedLocation("");
+    setPageHistory([]);
     setPage("dashboard");
   }
 
@@ -535,59 +630,123 @@ export default function App() {
     setShowPostItModal(false);
   }
 
-  function addDocument(e) {
+  async function uploadAttachmentFile(file, folder) {
+    if (!file) {
+      return { fileName: "", filePath: "", fileUrl: "" };
+    }
+
+    const safeFileName = file.name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9._-]/g, "_");
+
+    const filePath = `${selectedLocation || "geral"}/${folder}/${Date.now()}_${safeFileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("forgo-uploads")
+      .upload(filePath, file, {
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+    if (uploadError) throw uploadError;
+
+    const { data: publicData } = supabase.storage
+      .from("forgo-uploads")
+      .getPublicUrl(filePath);
+
+    return {
+      fileName: file.name,
+      filePath,
+      fileUrl: publicData?.publicUrl || "",
+    };
+  }
+
+  async function addDocument(e) {
     e.preventDefault();
     if (!documentForm.title || !documentForm.category) return;
 
-    const newItem = {
-      id: Date.now(),
-      title: documentForm.title,
-      category: documentForm.category,
-      description: documentForm.description,
-      color: documentForm.color,
-      fileName: documentForm.fileName,
-      createdAt: new Date().toLocaleDateString("pt-BR"),
-    };
+    setUploadingAttachment("document");
 
-    setDocuments([newItem, ...documents]);
+    try {
+      const uploadedFileData = await uploadAttachmentFile(documentUploadFile, "repositorio");
 
-    setDocumentForm({
-      title: "",
-      category: "",
-      description: "",
-      color: "#2563eb",
-      fileName: "",
-      createdAt: "",
-    });
+      const newItem = {
+        id: Date.now(),
+        title: documentForm.title,
+        category: documentForm.category,
+        description: documentForm.description,
+        color: documentForm.color,
+        fileName: uploadedFileData.fileName || documentForm.fileName,
+        filePath: uploadedFileData.filePath || documentForm.filePath,
+        fileUrl: uploadedFileData.fileUrl || documentForm.fileUrl,
+        createdAt: new Date().toLocaleDateString("pt-BR"),
+      };
+
+      setDocuments([newItem, ...documents]);
+
+      setDocumentForm({
+        title: "",
+        category: "",
+        description: "",
+        color: "#2563eb",
+        fileName: "",
+        filePath: "",
+        fileUrl: "",
+        createdAt: "",
+      });
+
+      setDocumentUploadFile(null);
+    } catch (err) {
+      alert(err.message || "Erro ao enviar arquivo do documento.");
+    } finally {
+      setUploadingAttachment("");
+    }
   }
 
-  function addContract(e) {
+  async function addContract(e) {
     e.preventDefault();
     if (!contractForm.title || !contractForm.company || !contractForm.expiration)
       return;
 
-    const newItem = {
-      id: Date.now(),
-      title: contractForm.title,
-      company: contractForm.company,
-      expiration: contractForm.expiration,
-      status: contractForm.status,
-      color: contractForm.color,
-      fileName: contractForm.fileName,
-      createdAt: new Date().toLocaleDateString("pt-BR"),
-    };
+    setUploadingAttachment("contract");
 
-    setContracts([newItem, ...contracts]);
+    try {
+      const uploadedFileData = await uploadAttachmentFile(contractUploadFile, "contratos");
 
-    setContractForm({
-      title: "",
-      company: "",
-      expiration: "",
-      status: "Ativo",
-      color: "#16a34a",
-      fileName: "",
-      createdAt: "",
-    });
+      const newItem = {
+        id: Date.now(),
+        title: contractForm.title,
+        company: contractForm.company,
+        expiration: contractForm.expiration,
+        status: contractForm.status,
+        color: contractForm.color,
+        fileName: uploadedFileData.fileName || contractForm.fileName,
+        filePath: uploadedFileData.filePath || contractForm.filePath,
+        fileUrl: uploadedFileData.fileUrl || contractForm.fileUrl,
+        createdAt: new Date().toLocaleDateString("pt-BR"),
+      };
+
+      setContracts([newItem, ...contracts]);
+
+      setContractForm({
+        title: "",
+        company: "",
+        expiration: "",
+        status: "Ativo",
+        color: "#16a34a",
+        fileName: "",
+        filePath: "",
+        fileUrl: "",
+        createdAt: "",
+      });
+
+      setContractUploadFile(null);
+    } catch (err) {
+      alert(err.message || "Erro ao enviar arquivo do contrato.");
+    } finally {
+      setUploadingAttachment("");
+    }
   }
 
   async function addApi(e) {
@@ -661,7 +820,7 @@ export default function App() {
     }
   }
 
-  function addTicket(e) {
+  async function addTicket(e) {
     e.preventDefault();
 
     if (!ticketForm.title || !ticketForm.requester || !ticketForm.description) {
@@ -669,37 +828,53 @@ export default function App() {
       return;
     }
 
-    const now = new Date().toLocaleString("pt-BR");
+    setUploadingAttachment("ticket");
 
-    const newItem = {
-      id: Date.now(),
-      ticketNumber: generateTicketNumber(),
-      ...ticketForm,
-      createdAt: now,
-      updatedAt: now,
-      history: [
-        {
-          id: Date.now() + 1,
-          text: `Chamado aberto por ${ticketForm.requester}`,
-          date: now,
-        },
-      ],
-    };
+    try {
+      const uploadedFileData = await uploadAttachmentFile(ticketUploadFile, "chamados");
+      const now = new Date().toLocaleString("pt-BR");
 
-    setTickets([newItem, ...tickets]);
+      const newItem = {
+        id: Date.now(),
+        ticketNumber: generateTicketNumber(),
+        ...ticketForm,
+        fileName: uploadedFileData.fileName || ticketForm.fileName,
+        filePath: uploadedFileData.filePath || ticketForm.filePath,
+        fileUrl: uploadedFileData.fileUrl || ticketForm.fileUrl,
+        createdAt: now,
+        updatedAt: now,
+        history: [
+          {
+            id: Date.now() + 1,
+            text: `Chamado aberto por ${ticketForm.requester}`,
+            date: now,
+          },
+        ],
+      };
 
-    setTicketForm({
-      title: "",
-      requester: "",
-      sector: "",
-      category: "",
-      priority: "Média",
-      responsible: "",
-      dueDate: "",
-      description: "",
-      status: "Aberto",
-      fileName: "",
-    });
+      setTickets([newItem, ...tickets]);
+
+      setTicketForm({
+        title: "",
+        requester: "",
+        sector: "",
+        category: "",
+        priority: "Média",
+        responsible: "",
+        dueDate: "",
+        description: "",
+        status: "Aberto",
+        fileName: "",
+        filePath: "",
+        fileUrl: "",
+      });
+
+      setTicketUploadFile(null);
+    } catch (err) {
+      alert(err.message || "Erro ao enviar anexo do chamado.");
+    } finally {
+      setUploadingAttachment("");
+    }
   }
 
   function updateTicketStatus(id, newStatus) {
@@ -726,7 +901,58 @@ export default function App() {
     );
   }
 
-  function addActivity(e) {
+  function addSystemUser() {
+    const userName = newSystemUser.trim();
+
+    if (!userName) {
+      alert("Informe o nome do usuário.");
+      return;
+    }
+
+    if (systemUsers.some((user) => user.toLowerCase() === userName.toLowerCase())) {
+      alert("Esse usuário já existe na lista.");
+      return;
+    }
+
+    setSystemUsers([...systemUsers, userName].sort((a, b) => a.localeCompare(b)));
+    setNewSystemUser("");
+  }
+
+  function removeSystemUser(userName) {
+    const hasAssignedTicket = tickets.some((ticket) => ticket.assignedTo === userName);
+
+    if (hasAssignedTicket) {
+      const confirmed = window.confirm(
+        `Existem chamados atribuídos para ${userName}. Deseja remover mesmo assim e deixar esses chamados sem atribuição?`
+      );
+
+      if (!confirmed) return;
+
+      setTickets((prev) =>
+        prev.map((ticket) =>
+          ticket.assignedTo === userName
+            ? {
+                ...ticket,
+                assignedTo: "",
+                updatedAt: new Date().toLocaleString("pt-BR"),
+                history: [
+                  ...(ticket.history || []),
+                  {
+                    id: Date.now(),
+                    text: `Usuário ${userName} removido da atribuição`,
+                    date: new Date().toLocaleString("pt-BR"),
+                  },
+                ],
+              }
+            : ticket
+        )
+      );
+    }
+
+    setSystemUsers(systemUsers.filter((user) => user !== userName));
+  }
+
+  async function addActivity(e) {
     e.preventDefault();
 
     if (!activityForm.activity || !activityForm.description) {
@@ -734,29 +960,46 @@ export default function App() {
       return;
     }
 
-    const newItem = {
-      id: Date.now(),
-      ...activityForm,
-      createdAt: new Date().toLocaleString("pt-BR"),
-    };
+    setUploadingAttachment("activity");
 
-    setActivities([newItem, ...activities]);
+    try {
+      const uploadedFileData = await uploadAttachmentFile(activityUploadFile, "atividades");
 
-    setActivityForm({
-      activity: "",
-      description: "",
-      responsible: "",
-      owner: "",
-      priority: "ALTA",
-      status: "Em andamento",
-      action: "",
-      update: "",
-      startDate: "",
-      expectedDate: "",
-      conclusionDate: "",
-    });
+      const newItem = {
+        id: Date.now(),
+        ...activityForm,
+        fileName: uploadedFileData.fileName || activityForm.fileName,
+        filePath: uploadedFileData.filePath || activityForm.filePath,
+        fileUrl: uploadedFileData.fileUrl || activityForm.fileUrl,
+        createdAt: new Date().toLocaleString("pt-BR"),
+      };
 
-    setShowActivityModal(false);
+      setActivities([newItem, ...activities]);
+
+      setActivityForm({
+        activity: "",
+        description: "",
+        responsible: "",
+        owner: "",
+        priority: "ALTA",
+        status: "Em andamento",
+        action: "",
+        update: "",
+        startDate: "",
+        expectedDate: "",
+        conclusionDate: "",
+        fileName: "",
+        filePath: "",
+        fileUrl: "",
+      });
+
+      setActivityUploadFile(null);
+      setShowActivityModal(false);
+    } catch (err) {
+      alert(err.message || "Erro ao enviar anexo da atividade.");
+    } finally {
+      setUploadingAttachment("");
+    }
   }
 
   function updateActivity(id, field, value) {
@@ -856,23 +1099,63 @@ export default function App() {
     }
   }
 
-  const dashboardTotals = useMemo(
-    () => ({
+  const dashboardTotals = useMemo(() => {
+    const openTickets = tickets.filter(
+      (item) => item.status !== "Resolvido" && item.status !== "Encerrado"
+    );
+
+    return {
       ganttItems: ganttItems.length,
       postIts: postIts.length,
       documents: documents.length,
       contracts: contracts.length,
       apis: apis.length,
       tickets: tickets.length,
+      openTickets: openTickets.length,
+      assignedTickets: tickets.filter((item) => item.assignedTo).length,
+      unassignedTickets: openTickets.filter((item) => !item.assignedTo).length,
       activities: activities.length,
-      urgentTickets: tickets.filter((item) => ticketDueState(item.dueDate) !== "normal").length,
+      urgentTickets: openTickets.filter(
+        (item) => ticketDueState(item.dueDate) !== "normal"
+      ).length,
+      lateTickets: openTickets.filter(
+        (item) => ticketDueState(item.dueDate) === "late"
+      ).length,
+      warningTickets: openTickets.filter(
+        (item) => ticketDueState(item.dueDate) === "warning"
+      ).length,
       urgentPostIts: postIts.filter((item) => getReminderState(item.date) !== "normal").length,
       trash: trash.length,
-    }),
-    [ganttItems, postIts, documents, contracts, apis, tickets, activities, trash]
-  );
+    };
+  }, [ganttItems, postIts, documents, contracts, apis, tickets, activities, trash]);
+
+  const dashboardTickerText = useMemo(() => {
+    const openTickets = tickets.filter(
+      (item) => item.status !== "Resolvido" && item.status !== "Encerrado"
+    );
+
+    if (openTickets.length === 0) {
+      return "Nenhum chamado aberto no momento.";
+    }
+
+    return openTickets
+      .slice(0, 12)
+      .map((ticket) => {
+        const sla =
+          ticketDueState(ticket.dueDate) === "late"
+            ? "VENCIDO"
+            : ticketDueState(ticket.dueDate) === "warning"
+            ? "VENCENDO"
+            : "NO PRAZO";
+
+        return `${ticket.ticketNumber || "FT-S/N"} - ${ticket.title} | ${ticket.status} | ${ticket.assignedTo ? `Atribuído: ${ticket.assignedTo}` : "Sem atribuição"} | SLA: ${sla}`;
+      })
+      .join("     •     ");
+  }, [tickets]);
 
   function Header({ title, subtitle }) {
+    const isDashboard = page === "dashboard";
+
     return (
       <div style={styles.topbar}>
         <div style={styles.headerLeft}>
@@ -885,6 +1168,35 @@ export default function App() {
             }}
           />
           <div>
+            <div style={styles.breadcrumb}>
+              <button
+                type="button"
+                style={styles.breadcrumbLink}
+                onClick={goDashboard}
+              >
+                Dashboard
+              </button>
+
+              {!isDashboard && (
+                <>
+                  <span style={styles.breadcrumbSeparator}>›</span>
+                  <span style={styles.breadcrumbCurrent}>
+                    {pageLabels[page] || title}
+                  </span>
+                </>
+              )}
+            </div>
+
+            {!isDashboard && (
+              <button
+                type="button"
+                style={styles.backButton}
+                onClick={goBack}
+              >
+                ← Voltar
+              </button>
+            )}
+
             <h1 style={styles.pageTitle}>{title}</h1>
             <p style={styles.pageSubtitle}>{subtitle}</p>
           </div>
@@ -1498,6 +1810,37 @@ export default function App() {
   }
 
   function renderDashboard() {
+    const openTickets = tickets.filter(
+      (item) => item.status !== "Resolvido" && item.status !== "Encerrado"
+    );
+
+    const upcomingGantt = ganttItems
+      .filter((item) => item.status !== "Concluída")
+      .sort((a, b) => parseLocalDate(a.end) - parseLocalDate(b.end))
+      .slice(0, 3);
+
+    const upcomingPostIts = postIts
+      .slice()
+      .sort((a, b) => parseLocalDate(a.date) - parseLocalDate(b.date))
+      .slice(0, 3);
+
+    const upcomingActivities = activities
+      .filter((item) => item.status !== "Concluído")
+      .sort((a, b) => {
+        if (!a.expectedDate) return 1;
+        if (!b.expectedDate) return -1;
+        return parseLocalDate(a.expectedDate) - parseLocalDate(b.expectedDate);
+      })
+      .slice(0, 3);
+
+    const upcomingTickets = openTickets
+      .sort((a, b) => {
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return parseLocalDate(a.dueDate) - parseLocalDate(b.dueDate);
+      })
+      .slice(0, 4);
+
     return (
       <>
         <Header
@@ -1505,53 +1848,123 @@ export default function App() {
           subtitle={`Bem-vindo, ${session.user.email} | Localidade: ${selectedLocationInfo?.name || "não selecionada"}`}
         />
 
+        <div style={styles.notificationPanel}>
+          <div style={styles.notificationHeader}>
+            <strong>Notificações operacionais</strong>
+            <span>
+              {dashboardTotals.openTickets} chamados abertos • {dashboardTotals.lateTickets} vencidos • {dashboardTotals.unassignedTickets} sem atribuição
+            </span>
+          </div>
+
+          <div style={styles.tickerBox}>
+            <div style={styles.tickerContent}>{dashboardTickerText}</div>
+          </div>
+        </div>
+
         <div style={styles.cards}>
-          <div style={styles.card}>
+          <div style={styles.clickableCard} onClick={() => navigateTo("gantt")}>
             <h3>Gantt</h3>
             <p>Total cadastrado: {dashboardTotals.ganttItems}</p>
+            <div style={styles.cardNotificationList}>
+              {upcomingGantt.length === 0 ? (
+                <small>Nenhuma demanda pendente.</small>
+              ) : (
+                upcomingGantt.map((item) => (
+                  <div key={item.id} style={styles.cardNotificationItem}>
+                    <strong>{item.title}</strong>
+                    <span>Vence em {formatDateBr(item.end)} • {item.responsible}</span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
-          <div style={styles.card}>
+          <div style={styles.clickableCard} onClick={() => navigateTo("postits")}>
             <h3>Post-its</h3>
             <p>Total cadastrado: {dashboardTotals.postIts}</p>
+            <div style={styles.cardNotificationList}>
+              {upcomingPostIts.length === 0 ? (
+                <small>Nenhum post-it cadastrado.</small>
+              ) : (
+                upcomingPostIts.map((item) => (
+                  <div key={item.id} style={styles.cardNotificationItem}>
+                    <strong>{item.title}</strong>
+                    <span>Data: {formatDateBr(item.date)} • {item.criticality}</span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
-          <div style={styles.card}>
+          <div style={styles.clickableCard} onClick={() => navigateTo("repositorio")}>
             <h3>Repositório</h3>
             <p>Total cadastrado: {dashboardTotals.documents}</p>
           </div>
 
-          <div style={styles.card}>
+          <div style={styles.clickableCard} onClick={() => navigateTo("contratos")}>
             <h3>Contratos</h3>
             <p>Total cadastrado: {dashboardTotals.contracts}</p>
           </div>
 
-          <div style={styles.card}>
+          <div style={styles.clickableCard} onClick={() => navigateTo("apis")}>
             <h3>APIs</h3>
             <p>Total cadastrado: {dashboardTotals.apis}</p>
           </div>
 
-          <div style={styles.card}>
+          <div style={styles.clickableCard} onClick={() => navigateTo("chamados")}>
             <h3>Chamados</h3>
             <p>Total cadastrado: {dashboardTotals.tickets}</p>
+            <div style={styles.cardNotificationList}>
+              {upcomingTickets.length === 0 ? (
+                <small>Nenhum chamado aberto.</small>
+              ) : (
+                upcomingTickets.map((ticket) => (
+                  <div key={ticket.id} style={styles.cardNotificationItem}>
+                    <strong>{ticket.ticketNumber || "FT-S/N"} - {ticket.title}</strong>
+                    <span>
+                      {ticket.assignedTo ? `Atribuído para ${ticket.assignedTo}` : "Sem atribuição"} • Prazo: {ticket.dueDate ? formatDateBr(ticket.dueDate) : "sem prazo"}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
-          <div style={styles.card}>
+          <div style={styles.clickableCard} onClick={() => navigateTo("chamados")}>
+            <h3>Chamados abertos</h3>
+            <p>Total: {dashboardTotals.openTickets}</p>
+          </div>
+
+          <div style={styles.clickableCard} onClick={() => navigateTo("atividades")}>
             <h3>Gestão de Atividades</h3>
             <p>Total cadastrado: {dashboardTotals.activities}</p>
+            <div style={styles.cardNotificationList}>
+              {upcomingActivities.length === 0 ? (
+                <small>Nenhuma atividade pendente.</small>
+              ) : (
+                upcomingActivities.map((item) => (
+                  <div key={item.id} style={styles.cardNotificationItem}>
+                    <strong>{item.activity}</strong>
+                    <span>
+                      Prevista: {item.expectedDate ? formatDateBr(item.expectedDate) : "sem data"} • Dono: {item.owner || "não informado"}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
-          <div style={styles.card}>
+          <div style={styles.clickableCard} onClick={() => navigateTo("chamados")}>
             <h3>Chamados urgentes</h3>
             <p>Total: {dashboardTotals.urgentTickets}</p>
           </div>
 
-          <div style={styles.card}>
+          <div style={styles.clickableCard} onClick={() => navigateTo("postits")}>
             <h3>Post-its urgentes</h3>
             <p>Total: {dashboardTotals.urgentPostIts}</p>
           </div>
 
-          <div style={styles.card}>
+          <div style={styles.clickableCard} onClick={() => navigateTo("lixeira")}>
             <h3>Lixeira</h3>
             <p>Total de itens: {dashboardTotals.trash}</p>
           </div>
@@ -2018,12 +2431,16 @@ export default function App() {
               <input
                 style={styles.input}
                 type="file"
-                onChange={(e) =>
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setDocumentUploadFile(file);
                   setDocumentForm({
                     ...documentForm,
-                    fileName: e.target.files?.[0]?.name || "",
-                  })
-                }
+                    fileName: file?.name || "",
+                    filePath: "",
+                    fileUrl: "",
+                  });
+                }}
               />
 
               {documentForm.fileName && (
@@ -2032,8 +2449,8 @@ export default function App() {
                 </p>
               )}
 
-              <button style={styles.button} type="submit">
-                Salvar documento
+              <button style={styles.button} type="submit" disabled={uploadingAttachment === "document"}>
+                {uploadingAttachment === "document" ? "Enviando arquivo..." : "Salvar documento"}
               </button>
             </form>
           </div>
@@ -2079,7 +2496,15 @@ export default function App() {
                         <strong style={{ fontSize: "20px" }}>{item.title}</strong>
                         <p>Categoria: {item.category}</p>
                         <p>{item.description}</p>
-                        {item.fileName && <p>Arquivo: {item.fileName}</p>}
+                        {item.fileName && (
+                          <p>
+                            Arquivo: {item.fileUrl ? (
+                              <a href={item.fileUrl} target="_blank" rel="noreferrer">
+                                {item.fileName}
+                              </a>
+                            ) : item.fileName}
+                          </p>
+                        )}
                         <p>Data de inserção: {item.createdAt || "-"}</p>
                       </div>
                     </div>
@@ -2159,12 +2584,16 @@ export default function App() {
               <input
                 style={styles.input}
                 type="file"
-                onChange={(e) =>
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setContractUploadFile(file);
                   setContractForm({
                     ...contractForm,
-                    fileName: e.target.files?.[0]?.name || "",
-                  })
-                }
+                    fileName: file?.name || "",
+                    filePath: "",
+                    fileUrl: "",
+                  });
+                }}
               />
 
               {contractForm.fileName && (
@@ -2173,8 +2602,8 @@ export default function App() {
                 </p>
               )}
 
-              <button style={styles.button} type="submit">
-                Salvar contrato
+              <button style={styles.button} type="submit" disabled={uploadingAttachment === "contract"}>
+                {uploadingAttachment === "contract" ? "Enviando arquivo..." : "Salvar contrato"}
               </button>
             </form>
           </div>
@@ -2221,7 +2650,15 @@ export default function App() {
                         <p>Empresa: {item.company}</p>
                         <p>Vencimento: {formatDateBr(item.expiration)}</p>
                         <p>Status: {item.status}</p>
-                        {item.fileName && <p>Arquivo: {item.fileName}</p>}
+                        {item.fileName && (
+                          <p>
+                            Arquivo: {item.fileUrl ? (
+                              <a href={item.fileUrl} target="_blank" rel="noreferrer">
+                                {item.fileName}
+                              </a>
+                            ) : item.fileName}
+                          </p>
+                        )}
                         <p>Data de inserção: {item.createdAt || "-"}</p>
                       </div>
                     </div>
@@ -2496,6 +2933,22 @@ export default function App() {
                 }
               />
 
+              <label style={styles.label}>Atribuir para usuário</label>
+              <select
+                style={styles.input}
+                value={ticketForm.assignedTo}
+                onChange={(e) =>
+                  setTicketForm({ ...ticketForm, assignedTo: e.target.value })
+                }
+              >
+                <option value="">Sem atribuição</option>
+                {systemUsers.map((user) => (
+                  <option key={user} value={user}>
+                    {user}
+                  </option>
+                ))}
+              </select>
+
               <label style={styles.label}>Prazo</label>
               <input
                 style={styles.input}
@@ -2532,12 +2985,16 @@ export default function App() {
               <input
                 style={styles.input}
                 type="file"
-                onChange={(e) =>
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setTicketUploadFile(file);
                   setTicketForm({
                     ...ticketForm,
-                    fileName: e.target.files?.[0]?.name || "",
-                  })
-                }
+                    fileName: file?.name || "",
+                    filePath: "",
+                    fileUrl: "",
+                  });
+                }}
               />
 
               {ticketForm.fileName && (
@@ -2546,8 +3003,8 @@ export default function App() {
                 </p>
               )}
 
-              <button style={styles.button} type="submit">
-                Abrir chamado
+              <button style={styles.button} type="submit" disabled={uploadingAttachment === "ticket"}>
+                {uploadingAttachment === "ticket" ? "Enviando anexo..." : "Abrir chamado"}
               </button>
             </form>
           </div>
@@ -2565,6 +3022,45 @@ export default function App() {
                 })
               }
             />
+
+            <div style={styles.userManagementBox}>
+              <div style={styles.userManagementHeader}>
+                <strong>Usuários para atribuição</strong>
+                <span>Cadastre ou remova usuários disponíveis para receber chamados.</span>
+              </div>
+
+              <div style={styles.userAddRow}>
+                <input
+                  style={styles.input}
+                  placeholder="Nome do usuário"
+                  value={newSystemUser}
+                  onChange={(e) => setNewSystemUser(e.target.value)}
+                />
+
+                <button
+                  type="button"
+                  style={styles.secondaryButton}
+                  onClick={addSystemUser}
+                >
+                  Inserir usuário
+                </button>
+              </div>
+
+              <div style={styles.userChips}>
+                {systemUsers.map((user) => (
+                  <span key={user} style={styles.userChip}>
+                    {user}
+                    <button
+                      type="button"
+                      style={styles.userChipRemove}
+                      onClick={() => removeSystemUser(user)}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
 
             <div style={styles.ticketDashboard}>
               <div style={styles.ticketDashboardCard}>
@@ -2726,6 +3222,45 @@ export default function App() {
                                 </p>
                               )}
 
+                              <p style={styles.smallText}>
+                                Atribuído para: {ticket.assignedTo || "Sem atribuição"}
+                              </p>
+
+                              <select
+                                style={styles.input}
+                                value={ticket.assignedTo || ""}
+                                onChange={(e) =>
+                                  setTickets((prev) =>
+                                    prev.map((item) =>
+                                      item.id === ticket.id
+                                        ? {
+                                            ...item,
+                                            assignedTo: e.target.value,
+                                            updatedAt: new Date().toLocaleString("pt-BR"),
+                                            history: [
+                                              ...(item.history || []),
+                                              {
+                                                id: Date.now(),
+                                                text: e.target.value
+                                                  ? `Chamado atribuído para ${e.target.value}`
+                                                  : "Atribuição removida",
+                                                date: new Date().toLocaleString("pt-BR"),
+                                              },
+                                            ],
+                                          }
+                                        : item
+                                    )
+                                  )
+                                }
+                              >
+                                <option value="">Sem atribuição</option>
+                                {systemUsers.map((user) => (
+                                  <option key={user} value={user}>
+                                    {user}
+                                  </option>
+                                ))}
+                              </select>
+
                               {ticket.dueDate && (
                                 <p
                                   style={{
@@ -2747,7 +3282,13 @@ export default function App() {
                               </p>
 
                               {ticket.fileName && (
-                                <p style={styles.fileInfo}>Anexo: {ticket.fileName}</p>
+                                <p style={styles.fileInfo}>
+                                  Anexo: {ticket.fileUrl ? (
+                                    <a href={ticket.fileUrl} target="_blank" rel="noreferrer">
+                                      {ticket.fileName}
+                                    </a>
+                                  ) : ticket.fileName}
+                                </p>
                               )}
 
                               <select
@@ -2858,13 +3399,14 @@ export default function App() {
                   <th style={styles.activityTh}>DATA INÍCIO</th>
                   <th style={styles.activityTh}>DATA PREVISTA</th>
                   <th style={styles.activityTh}>DATA CONCLUSÃO</th>
+                  <th style={styles.activityTh}>ANEXO</th>
                 </tr>
               </thead>
 
               <tbody>
                 {activities.length === 0 ? (
                   <tr>
-                    <td style={styles.activityTd} colSpan="12">
+                    <td style={styles.activityTd} colSpan="13">
                       Nenhuma atividade cadastrada.
                     </td>
                   </tr>
@@ -3161,6 +3703,28 @@ export default function App() {
                   }
                 />
 
+                <label style={styles.label}>Anexo da atividade</label>
+                <input
+                  style={styles.input}
+                  type="file"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setActivityUploadFile(file);
+                    setActivityForm({
+                      ...activityForm,
+                      fileName: file?.name || "",
+                      filePath: "",
+                      fileUrl: "",
+                    });
+                  }}
+                />
+
+                {activityForm.fileName && (
+                  <p style={styles.fileInfo}>
+                    Arquivo selecionado: {activityForm.fileName}
+                  </p>
+                )}
+
                 <div style={styles.activityModalActions}>
                   <button
                     type="button"
@@ -3170,8 +3734,8 @@ export default function App() {
                     Cancelar
                   </button>
 
-                  <button style={styles.secondaryButton} type="submit">
-                    Salvar atividade
+                  <button style={styles.secondaryButton} type="submit" disabled={uploadingAttachment === "activity"}>
+                    {uploadingAttachment === "activity" ? "Enviando anexo..." : "Salvar atividade"}
                   </button>
                 </div>
               </form>
@@ -3382,36 +3946,40 @@ export default function App() {
           </div>
         </div>
 
-        <button style={styles.menuButton} onClick={() => setPage("dashboard")}>
+        <button style={styles.menuButton} onClick={goDashboard}>
           Dashboard
         </button>
-        <button style={styles.menuButton} onClick={() => setPage("gantt")}>
+        <button style={styles.menuButton} onClick={() => navigateTo("gantt")}>
           Gantt
         </button>
-        <button style={styles.menuButton} onClick={() => setPage("postit")}>
+        <button style={styles.menuButton} onClick={() => navigateTo("postit")}>
           Post-it
         </button>
-        <button style={styles.menuButton} onClick={() => setPage("repositorio")}>
+        <button style={styles.menuButton} onClick={() => navigateTo("repositorio")}>
           Repositório
         </button>
-        <button style={styles.menuButton} onClick={() => setPage("contratos")}>
+        <button style={styles.menuButton} onClick={() => navigateTo("contratos")}>
           Contratos
         </button>
-        <button style={styles.menuButton} onClick={() => setPage("apis")}>
+        <button style={styles.menuButton} onClick={() => navigateTo("apis")}>
           APIs
         </button>
-        <button style={styles.menuButton} onClick={() => setPage("chamados")}>
+        <button style={styles.menuButton} onClick={() => navigateTo("chamados")}>
           Chamados
         </button>
-        <button style={styles.menuButton} onClick={() => setPage("atividades")}>
+        <button style={styles.menuButton} onClick={() => navigateTo("atividades")}>
           Gestão de Atividades
         </button>
-        <button style={styles.menuButton} onClick={() => setPage("lixeira")}>
+        <button style={styles.menuButton} onClick={() => navigateTo("lixeira")}>
           Lixeira
         </button>
       </div>
 
-      <div style={styles.content}>{renderPage()}</div>
+      <div style={styles.content}>
+        <div key={page} style={styles.pageTransition}>
+          {renderPage()}
+        </div>
+      </div>
     </div>
   );
 }
@@ -3535,6 +4103,50 @@ const styles = {
     cursor: "pointer",
     fontWeight: 800,
     boxShadow: "0 10px 18px rgba(15,23,42,0.18)",
+  },
+
+  breadcrumb: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    marginBottom: "6px",
+    fontSize: "12px",
+    fontWeight: 800,
+    color: "#64748b",
+  },
+  breadcrumbLink: {
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    color: "#2563eb",
+    cursor: "pointer",
+    fontWeight: 900,
+    fontSize: "12px",
+  },
+  breadcrumbSeparator: {
+    color: "#94a3b8",
+    fontWeight: 900,
+  },
+  breadcrumbCurrent: {
+    color: "#64748b",
+  },
+  backButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "1px solid #cbd5e1",
+    background: "#0f172a",
+    color: "#ffffff",
+    padding: "8px 12px",
+    borderRadius: "12px",
+    cursor: "pointer",
+    fontWeight: 900,
+    fontSize: "13px",
+    marginBottom: "10px",
+    boxShadow: "0 8px 16px rgba(15,23,42,0.14)",
+  },
+  pageTransition: {
+    animation: "forgoPageIn .22s ease both",
   },
   centerScreen: {
     display: "flex",
@@ -3789,6 +4401,108 @@ const styles = {
     color: "#64748b",
     fontWeight: 500,
   },
+
+  notificationPanel: {
+    background: "rgba(255,255,255,0.95)",
+    border: "1px solid #e2e8f0",
+    borderRadius: "22px",
+    padding: "16px",
+    marginBottom: "20px",
+    boxShadow: "0 16px 34px rgba(15,23,42,0.06)",
+  },
+  notificationHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "12px",
+    flexWrap: "wrap",
+    color: "#0f172a",
+    marginBottom: "10px",
+  },
+  tickerBox: {
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+    borderRadius: "14px",
+    background: "linear-gradient(135deg, #0f172a, #1e3a8a)",
+    color: "white",
+    padding: "12px 0",
+    border: "1px solid rgba(255,255,255,0.12)",
+  },
+  tickerContent: {
+    display: "inline-block",
+    paddingLeft: "100%",
+    animation: "forgoTicker 32s linear infinite",
+    fontWeight: 800,
+    letterSpacing: "0.02em",
+  },
+
+  cardNotificationList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    marginTop: "12px",
+    borderTop: "1px solid #e2e8f0",
+    paddingTop: "12px",
+  },
+  cardNotificationItem: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "3px",
+    padding: "8px 10px",
+    borderRadius: "12px",
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    color: "#0f172a",
+  },
+  userManagementBox: {
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    borderRadius: "18px",
+    padding: "14px",
+    marginBottom: "16px",
+  },
+  userManagementHeader: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    marginBottom: "12px",
+    color: "#0f172a",
+  },
+  userAddRow: {
+    display: "grid",
+    gridTemplateColumns: "minmax(220px, 1fr) 180px",
+    gap: "10px",
+    alignItems: "start",
+    marginBottom: "10px",
+  },
+  userChips: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "8px",
+  },
+  userChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "7px 10px",
+    borderRadius: "999px",
+    background: "#eff6ff",
+    border: "1px solid #bfdbfe",
+    color: "#1e3a8a",
+    fontWeight: 800,
+    fontSize: "13px",
+  },
+  userChipRemove: {
+    border: "none",
+    background: "#1e3a8a",
+    color: "white",
+    borderRadius: "999px",
+    width: "20px",
+    height: "20px",
+    cursor: "pointer",
+    fontWeight: 900,
+    lineHeight: 1,
+  },
   cards: {
     display: "grid",
     gridTemplateColumns: "repeat(2, 1fr)",
@@ -3800,6 +4514,16 @@ const styles = {
     borderRadius: "20px",
     border: "1px solid #e2e8f0",
     boxShadow: "0 14px 30px rgba(15,23,42,0.06)",
+  },
+
+  clickableCard: {
+    background: "rgba(255,255,255,0.94)",
+    padding: "22px",
+    borderRadius: "20px",
+    border: "1px solid #e2e8f0",
+    boxShadow: "0 14px 30px rgba(15,23,42,0.06)",
+    cursor: "pointer",
+    transition: "transform .15s ease, box-shadow .15s ease, border-color .15s ease",
   },
   moduleLayout: {
     display: "grid",
@@ -4285,7 +5009,7 @@ const styles = {
     background: "#ffffff",
   },
   activityTable: {
-    width: "1600px",
+    width: "1800px",
     borderCollapse: "collapse",
     tableLayout: "fixed",
     fontSize: "12px",
